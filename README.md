@@ -64,7 +64,7 @@
 
 ### Cloudflare Placement Hints
 
-`placement.region`（例如 `aws:us-east-1`）或 HTTP `placement.hostname` 是 **Worker 级部署配置**，不是插件的 fetch 参数；HTTP 主机提示测量延迟，不等同于指定美国出口。它只影响 fetch 事件，不控制 Cron/RPC，不能保证固定执行地点或 OpenAI 接受出口地区。这里不修改共用 Worker 的 Placement，以免影响 Gemini；这次真实后台提交已在现有部署被接受，不需要为了 Webhook先改全局放置策略。[Cloudflare 官方说明](https://developers.cloudflare.com/workers/configuration/placement/)
+`placement.region`（例如 `aws:us-east-1`）或 HTTP `placement.hostname` 是 **Worker 级部署配置**，不是插件的 fetch 参数；HTTP 主机提示测量延迟，不等同于指定美国出口。它只影响 fetch 事件，不控制 Cron/RPC，不能保证固定执行地点或 OpenAI 接受出口地区。这里不修改共用 Worker 的 Placement，以免影响 Gemini。2026-10-30 管理面板模拟提交曾成功，但后续真实 QQ 入口仍返回 `403 REGION_UNSUPPORTED`，故停止改造、恢复 Gemini；该部署尚未通过真实 Webhook 自动回复验收。[Cloudflare 官方说明](https://developers.cloudflare.com/workers/configuration/placement/)
 
 ## 本地开发
 
