@@ -2,19 +2,27 @@ import type { Route } from '@qqbot/sdk'
 import type { Config } from './config.js'
 import { ensureBackground, metaGet } from './background.js'
 import { API_REASONS } from './responses.js'
+import { checkAuthentication } from './auth-check.js'
 
 const PAGE = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><link rel="stylesheet" href="/tokens.css">
 <style>body{font:16px system-ui;padding:20px;line-height:1.6}pre{white-space:pre-wrap;overflow-wrap:anywhere}button{padding:10px}</style>
 <h2>OpenAI 后台任务</h2><p>使用已有 D1、KV 自动回复，不需要 /result。可选签名 Webhook 通知（Cron 仅恢复已收到的通知），或原有 Cron 轮询。单聊原消息 60 分钟、群聊 5 分钟内有效。</p>
 <p>模型权限以当前 OpenAI 项目为准。本页仅显示安全状态，不读取或展示密钥、用户标识、问题或回答。/reset 取消当前会话未完成任务；已在途的 QQ 消息无法撤回。</p>
 <button id="refresh">刷新任务状态</button><pre id="result">正在读取…</pre>
+<button id="auth-check">只读认证检查</button><p>不生成回答、不发送 QQ；只返回固定诊断分类，不能替代真实模型调用验证。</p><pre id="auth-result"></pre>
 <script type="module">import {createBridge} from '/bridge.js';const bridge=await createBridge();const button=document.getElementById('refresh');
 async function run(){button.disabled=true;try{const response=await bridge.fetch('/api/status');document.getElementById('result').textContent=JSON.stringify(await response.json(),null,2)}catch{document.getElementById('result').textContent='暂时无法读取状态，请稍后刷新。'}finally{button.disabled=false;bridge.resize()}}
-button.onclick=run;await run();</script></html>`
+button.onclick=run;const auth=document.getElementById('auth-check');auth.onclick=async()=>{auth.disabled=true;try{const response=await bridge.fetch('/api/auth-check',{method:'POST'});document.getElementById('auth-result').textContent=JSON.stringify(await response.json(),null,2)}catch{document.getElementById('auth-result').textContent='认证检查暂不可用。'}finally{auth.disabled=false;bridge.resize()}};await run();</script></html>`
 
-export function backgroundRoutes(_fetcher: typeof fetch): Route<Config>[] {
+export function backgroundRoutes(fetcher: typeof fetch): Route<Config>[] {
+  let nextCheckAt = 0
   return [
     { method: 'GET', path: '/ui/', auth: 'admin', handler: () => new Response(PAGE, { headers: { 'content-type': 'text/html; charset=utf-8' } }) },
+    { method: 'POST', path: '/api/auth-check', auth: 'admin', async handler({ ctx }) {
+      if (Date.now() < nextCheckAt) return Response.json({ result: 'RATE_LIMITED' }, { status: 429, headers: { 'cache-control': 'no-store' } })
+      nextCheckAt = Date.now() + 10000
+      return Response.json(await checkAuthentication(ctx.config, fetcher), { headers: { 'cache-control': 'no-store' } })
+    } },
     { method: 'GET', path: '/api/status', auth: 'admin', async handler({ ctx }) {
       try {
         await ensureBackground(ctx)

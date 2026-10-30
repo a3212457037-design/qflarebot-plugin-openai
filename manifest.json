@@ -82,6 +82,11 @@
       "auth": "admin"
     },
     {
+      "method": "POST",
+      "path": "/api/auth-check",
+      "auth": "admin"
+    },
+    {
       "method": "GET",
       "path": "/api/status",
       "auth": "admin"

@@ -45,6 +45,8 @@
 
 官方依据：[OpenAI 原生网关端点](https://developers.cloudflare.com/ai-gateway/usage/providers/openai/)、[日志控制](https://developers.cloudflare.com/ai-gateway/observability/logging/)、[请求处理](https://developers.cloudflare.com/ai-gateway/configuration/request-handling/)。网关核心功能免费；OpenAI 推理仍按自己的项目计费。
 
+管理员可在「OpenAI 后台任务」点击「只读认证检查」：分别检查 Cloudflare Token、OpenAI 模型列表读取和网关固定不存在的 Response。只发 GET，不生成回答、不修改会话，不显示凭证、模型列表或原始错误。Token active 不代表具有网关 Run 权限；网关 404 不代表模型生成或 QQ 投递已通过。SDK 限制停用插件的管理接口，检查时需临时启用 OpenAI，并避免与 Gemini 同时响应聊天。
+
 **费用：** 使用自己的 OpenAI API 项目额度，模型 Token 和原生 Web Search 按官方规则计费；不会开启计费或更改账户预算。工具次数限制、冷却和本地任务保护均不是账户费用的绝对上限。没有使用或承诺 Tavily 免费额度。
 
 ## 后台任务与平台限制
