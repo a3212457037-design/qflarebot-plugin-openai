@@ -109,9 +109,10 @@
         "enum": [
           "gpt-6-luna",
           "gpt-6.1-sol",
-          "gpt-6-astra"
+          "gpt-6-astra",
+          "gpt-6.1-terra"
         ],
-        "default": "gpt-6-luna",
+        "default": "gpt-6.1-terra",
         "description": "聊天用 /model 切换当前会话，/model default 跟随后台默认。权限及额度以 OpenAI 项目为准，不自动换模型。"
       },
       "executionMode": {
@@ -134,8 +135,8 @@
           "xhigh",
           "max"
         ],
-        "default": "max",
-        "description": "三个内置模型均支持 max。高推理可能增加延迟和 Token 消耗，建议保持后台模式。"
+        "default": "high",
+        "description": "四个内置模型均支持 high 与 max，默认 Terra + high。高推理可能增加延迟和 Token 消耗，建议保持后台模式。"
       },
       "enableWebSearch": {
         "type": "boolean",
@@ -156,7 +157,7 @@
         "default": 128000,
         "minimum": 64,
         "maximum": 128000,
-        "description": "三个内置模型的官方最大值 128000，包含可见输出及推理 Token。只是允许的上限，普通闲聊保持简洁。"
+        "description": "四个内置模型的官方最大值 128000，包含可见输出及推理 Token。只是允许的上限，普通闲聊保持简洁。"
       },
       "timeoutMs": {
         "type": "integer",
@@ -190,9 +191,9 @@
   },
   "defaultConfig": {
     "apiKey": "",
-    "model": "gpt-6-luna",
+    "model": "gpt-6.1-terra",
     "executionMode": "background",
-    "reasoningEffort": "max",
+    "reasoningEffort": "high",
     "enableWebSearch": true,
     "maxInputChars": 1000,
     "maxOutputTokens": 128000,

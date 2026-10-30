@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defaultConfig, readConfig, configSchema } from './config.js'
-import { MODEL_IDS } from './models.js'
+import { MODEL_IDS, parseModelChoice } from './models.js'
 import { askOpenAI, createInteraction, getInteraction, interactionAnswer, responseBody, RESPONSES_URL, RESPONSE_BYTES } from './responses.js'
 import { message } from './history.js'
 
@@ -10,7 +10,7 @@ const result = (text = '回答', status = 'completed') => ({ id: 'resp_test', st
 })
 afterEach(() => vi.useRealTimers())
 describe('官方 Responses API', () => {
-  it.each(MODEL_IDS)('%s 固定官方端点、Bearer、manual、后台和max，携带六轮及当前问题', async model => {
+  it.each(MODEL_IDS)('%s 固定官方端点、Bearer、manual、后台和high，携带六轮及当前问题', async model => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ id: 'resp_test', status: 'queued' }))
     const history = Array.from({ length: 7 }, (_, i) => [message('user', `问题${i}`), message('model', `回答${i}`)]).flat()
     await createInteraction('当前问题', { ...config, model }, fetcher, history)
@@ -18,7 +18,7 @@ describe('官方 Responses API', () => {
       'content-type': 'application/json', authorization: `Bearer ${config.apiKey}`,
     } }))
     const body = JSON.parse(fetcher.mock.calls[0]![1]!.body as string)
-    expect(body).toMatchObject({ model, background: true, store: true, reasoning: { effort: 'max' }, max_output_tokens: 128000,
+    expect(body).toMatchObject({ model, background: true, store: true, reasoning: { effort: 'high' }, max_output_tokens: 128000,
       tools: [{ type: 'web_search' }], tool_choice: 'auto', max_tool_calls: 3 })
     expect(body.input).toHaveLength(13)
     expect(body.input[0]).toEqual({ role: 'user', content: '问题1' })
@@ -27,6 +27,13 @@ describe('官方 Responses API', () => {
     expect(body).not.toHaveProperty('previous_response_id')
     expect(body).not.toHaveProperty('contents')
     expect(body).not.toHaveProperty('generationConfig')
+  })
+  it('Terra序号4及完整ID都可切换，默认请求明确使用high', () => {
+    expect(parseModelChoice('4')).toBe('gpt-6.1-terra')
+    expect(parseModelChoice('gpt-6.1-terra')).toBe('gpt-6.1-terra')
+    expect(parseModelChoice('1')).toBe('gpt-6-luna')
+    expect(parseModelChoice('5')).toBeNull()
+    expect(responseBody('问题', config, [])).toMatchObject({ model: 'gpt-6.1-terra', reasoning: { effort: 'high' } })
   })
   it('开关关闭时无tools，原生/search才required；不调用第三方搜索', () => {
     expect(responseBody('你好', { ...config, enableWebSearch: false }, [])).not.toHaveProperty('tools')
@@ -115,8 +122,8 @@ describe('官方 Responses API', () => {
   })
   it('writeOnly配置、安全模型列表、正确默认及范围', () => {
     expect(configSchema).toMatchObject({ properties: { apiKey: { writeOnly: true } } })
-    expect(defaultConfig).toMatchObject({ executionMode: 'background', reasoningEffort: 'max', maxOutputTokens: 128000 })
-    expect(readConfig({ apiKey: config.apiKey } as typeof config)).toMatchObject({ model: 'gpt-6-luna', executionMode: 'background' })
+    expect(defaultConfig).toMatchObject({ executionMode: 'background', reasoningEffort: 'high', maxOutputTokens: 128000 })
+    expect(readConfig({ apiKey: config.apiKey } as typeof config)).toMatchObject({ model: 'gpt-6.1-terra', executionMode: 'background' })
     for (const patch of [{ model: 'https://evil.test' }, { timeoutMs: 27001 }, { maxOutputTokens: 128001 }, { enableWebSearch: 'yes' }, { apiKey: 'bad\nkey' }]) {
       expect(readConfig({ ...config, ...patch } as typeof config)).toBeNull()
     }

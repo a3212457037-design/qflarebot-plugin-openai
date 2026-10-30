@@ -1,3 +1,10 @@
+## Terra + high 更新（2026-10-30）
+
+- 增加官方 `gpt-6.1-terra`，默认模型与档位改为 Terra + high。/model 4 与完整 ID 均可选；原序号 1/2/3 保持不变。
+- 已核对官方模型页面：支持 Responses API、high、原生 Web Search，输出上限 128000。
+- 80/80 测试通过；类型检查、构建、manifest 一致性和真实本地 workerd/D1/KV 冒烟通过；新增 Terra 请求与序号回归。
+- 尚未验证用户项目对 Terra 的真实 API 权限。此前 0.1.0 已安装，Gemini 已停用并保留数据；此记录保留首版验证结果如下。
+
 # OpenAI 插件验证记录
 
 日期：2026-10-30；版本：0.1.0；QFlareBot v0.6.1 / API v4。

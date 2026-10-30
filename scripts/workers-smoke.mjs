@@ -11,13 +11,13 @@ import {createOpenAIPlugin} from './dist/plugin.js';
 import {createScopedDB,createScopedKV} from '../QFlareBot/packages/runtime/src/scoped.ts';
 export default {async fetch(request,env,execution){
  const url=new URL(request.url); const mode=url.searchParams.get('mode'); const scene=url.searchParams.get('scene')??'c2c';
- const config={apiKey:'local-fake-background-key',model:'gpt-6-luna',executionMode:'background',reasoningEffort:'max',enableWebSearch:true,maxInputChars:1000,maxOutputTokens:65536,timeoutMs:27000,ignoredCommandPrefixes:['/']};
+ const config={apiKey:'local-fake-background-key',model:'gpt-6.1-terra',executionMode:'background',reasoningEffort:'high',enableWebSearch:true,maxInputChars:1000,maxOutputTokens:65536,timeoutMs:27000,ignoredCommandPrefixes:['/']};
  const db=createScopedDB(env.DB,'openai');const kv=createScopedKV(env.KV,'openai');
  const fetcher=async(input,init)=>{
   if(!String(input).startsWith('https://api.openai.com/v1/responses'))throw new Error('unexpected host');
   if(init.redirect!=='manual'||init.headers.authorization!=='Bearer '+config.apiKey)throw new Error('unsafe request');
   if(init.method==='POST'){
-   const body=JSON.parse(init.body);if(!body.background||!body.store||body.reasoning.effort!=='max'||body.tools[0].type!=='web_search')throw new Error('invalid native request');
+   const body=JSON.parse(init.body);if(!body.background||!body.store||body.reasoning.effort!=='high'||body.tools[0].type!=='web_search')throw new Error('invalid native request');
    return Response.json({id:'resp_'+scene,status:'queued'});
   }
   return Response.json({id:'resp_'+scene,status:'completed',output:[{type:'reasoning',summary:[{type:'summary_text',text:'never send'}]},

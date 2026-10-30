@@ -3,7 +3,7 @@ import type { Config } from './config.js'
 import { conversationKey } from './history.js'
 
 // 官方模型枚举；模型名不用于构造 URL。
-export const MODEL_IDS = ['gpt-6-luna', 'gpt-6.1-sol', 'gpt-6-astra'] as const
+export const MODEL_IDS = ['gpt-6-luna', 'gpt-6.1-sol', 'gpt-6-astra', 'gpt-6.1-terra'] as const
 export type ModelId = typeof MODEL_IDS[number]
 export const isModelId = (value: unknown): value is ModelId => typeof value === 'string' && MODEL_IDS.includes(value as ModelId)
 
@@ -35,7 +35,7 @@ export async function resolveModel(ctx: PluginContext<Config>, session: Session,
 
 export function parseModelChoice(text: string): ModelId | null {
   const value = text.trim().toLowerCase()
-  if (/^[1-3]$/u.test(value)) return MODEL_IDS[Number(value) - 1]!
+  if (/^[1-9]\d*$/u.test(value) && Number(value) <= MODEL_IDS.length) return MODEL_IDS[Number(value) - 1]!
   return isModelId(value) ? value : null
 }
 

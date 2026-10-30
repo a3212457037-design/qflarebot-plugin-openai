@@ -5,7 +5,7 @@
 ## 功能
 
 - QQ 私聊直接发送普通文字；群聊仅 @机器人时回复。跳过其他命令、附件及非文本事件。
-- `/ai 问题`：保留命令用法。`/model` 查看、`/model 2` 或模型 ID 切换当前用户当前会话；`/model default` 跟随后台默认，切换保留上下文。
+- `/ai 问题`：保留命令用法。`/model` 查看、`/model 2` 或模型 ID 切换当前用户当前会话；`/model default` 跟随后台默认，切换保留上下文。Terra 可用 `/model 4` 或 `/model gpt-6.1-terra`。
 - 最近 **6 轮完整问答**，最后一次成功后 **24 小时 TTL**；按机器人、私聊用户或群+用户隔离。`/reset` 只清除当前会话，并取消该会话旧任务，不清除 Key、模型偏好或其他用户数据。
 - OpenAI 原生 `web_search`，没有 Tavily 或第三方搜索 API。开启时模型按需搜索，`/search 关键词` 强制搜索；仅展示实际返回的 URL 引用，过滤非 HTTP(S)、携带凭据或 Key 的链接，不输出推理、工具原文和内部元数据。
 - 默认 OpenAI 后台推理，由每分钟 Cron 自动轮询并用原始 QQ `msg_id`、正确 `msg_seq` 自动回复，普通答案不需要 `/result` 或 `/more`。
@@ -24,11 +24,11 @@
 
 | 设置 | 默认值 | 说明 |
 | --- | --- | --- |
-| 默认模型 | `gpt-6-luna` | 另外可选 `gpt-6.1-sol`、`gpt-6-astra`；权限由 OpenAI 项目决定，不自动换模型或重试生成 |
+| 默认模型 | `gpt-6.1-terra` | 另外可选 `gpt-6-luna`、`gpt-6.1-sol`、`gpt-6-astra`；权限由 OpenAI 项目决定，不自动换模型或重试生成 |
 | 推理执行模式 | `background` | 后台推理 + Cron 自动回复；`responses` 为同步模式 |
-| 推理档位 | `max` | 三个内置模型均支持，可在后台降低档位 |
+| 推理档位 | `high` | 默认 Terra + high；四个内置模型均支持 high/max，可在后台降低档位 |
 | 原生联网搜索 | 开启 | `tool_choice: auto`，模型按需使用；`/search` 为 `required`；每轮最多 3 次内置工具调用 |
-| 生成 Token 上限 | `128000` | 三个内置模型官方上限，包含推理 Token；允许最大值，并非要求每次生成这么长 |
+| 生成 Token 上限 | `128000` | 四个内置模型官方上限，包含推理 Token；允许最大值，并非要求每次生成这么长 |
 | 问题字符上限 | `1000` | Unicode 字符计数 |
 | HTTP 超时 | `27000` 毫秒 | 同步模式最多 27 秒；后台提交与查询各最多 8 秒，远端推理可以继续 |
 | 跳过的命令前缀 | `/` | 自定义全局前缀需在此同步，SDK 不提供读取全局前缀接口 |
@@ -78,6 +78,6 @@ npm.cmd run test:install
 - [Responses API](https://developers.openai.com/api/reference/python/resources/responses/methods/create)
 - [后台执行](https://developers.openai.com/api/docs/guides/background)
 - [原生 Web Search 与 URL 引用](https://developers.openai.com/api/docs/guides/tools-web-search)
-- [Luna](https://developers.openai.com/api/docs/models/gpt-6-luna)、[Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol)、[Astra](https://developers.openai.com/api/docs/models/gpt-6-astra)
+- [Luna](https://developers.openai.com/api/docs/models/gpt-6-luna)、[Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol)、[Astra](https://developers.openai.com/api/docs/models/gpt-6-astra)、[Terra](https://developers.openai.com/api/docs/models/gpt-6.1-terra)
 
 具体检查结果和真实环境边界见 [VERIFICATION.md](VERIFICATION.md)。代码与复用来源按 MIT 许可发布，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

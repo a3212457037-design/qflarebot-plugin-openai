@@ -14,7 +14,7 @@ export interface Config {
 }
 
 export const defaultConfig: Config = {
-  apiKey: '', model: 'gpt-6-luna', executionMode: 'background', reasoningEffort: 'max',
+  apiKey: '', model: 'gpt-6.1-terra', executionMode: 'background', reasoningEffort: 'high',
   enableWebSearch: true, maxInputChars: 1000, maxOutputTokens: 128000, timeoutMs: 27000,
   ignoredCommandPrefixes: ['/'],
 }
@@ -31,12 +31,12 @@ export const configSchema: JsonSchema = {
       description: '聊天用 /model 切换当前会话，/model default 跟随后台默认。权限及额度以 OpenAI 项目为准，不自动换模型。' },
     executionMode: { type: 'string', title: '推理执行模式', enum: ['responses', 'background'], default: 'background',
       description: '默认后台推理，由现有每分钟 Cron 自动回复，支持超过 30 秒的推理。responses 为同步模式，最多等待 27 秒。后台需要现有 D1、KV 和每分钟 Cron。' },
-    reasoningEffort: { type: 'string', title: '推理档位', enum: ['low', 'medium', 'high', 'xhigh', 'max'], default: 'max',
-      description: '三个内置模型均支持 max。高推理可能增加延迟和 Token 消耗，建议保持后台模式。' },
+    reasoningEffort: { type: 'string', title: '推理档位', enum: ['low', 'medium', 'high', 'xhigh', 'max'], default: defaultConfig.reasoningEffort,
+      description: '四个内置模型均支持 high 与 max，默认 Terra + high。高推理可能增加延迟和 Token 消耗，建议保持后台模式。' },
     enableWebSearch: { type: 'boolean', title: '启用 OpenAI 原生联网搜索', default: true,
       description: '由模型按需调用官方 web_search；/search 强制搜索。不使用 Tavily，也不需要其他搜索 Key。搜索调用按 OpenAI 项目计费，每轮最多 3 次内置工具调用，非账户费用封顶。' },
     maxInputChars: integer('maxInputChars', '问题字符上限'),
-    maxOutputTokens: { ...integer('maxOutputTokens', '生成 Token 上限'), description: '三个内置模型的官方最大值 128000，包含可见输出及推理 Token。只是允许的上限，普通闲聊保持简洁。' },
+    maxOutputTokens: { ...integer('maxOutputTokens', '生成 Token 上限'), description: '四个内置模型的官方最大值 128000，包含可见输出及推理 Token。只是允许的上限，普通闲聊保持简洁。' },
     timeoutMs: { ...integer('timeoutMs', 'HTTP 超时（毫秒）'), description: '同步模式最多 27 秒；后台仅对每次提交/查询 HTTP 最多等待 8 秒，不限制远端推理总时长。QQ 回复窗口仍有效。' },
     ignoredCommandPrefixes: { type: 'array', title: '跳过的命令前缀', default: ['/'], maxItems: 16,
       items: { type: 'string', minLength: 1, maxLength: 32 },
