@@ -1,6 +1,7 @@
 import type { Route } from '@qqbot/sdk'
 import type { Config } from './config.js'
 import { ensureBackground, metaGet } from './background.js'
+import { API_REASONS } from './responses.js'
 
 const PAGE = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><link rel="stylesheet" href="/tokens.css">
 <style>body{font:16px system-ui;padding:20px;line-height:1.6}pre{white-space:pre-wrap;overflow-wrap:anywhere}button{padding:10px}</style>
@@ -17,7 +18,12 @@ export function backgroundRoutes(_fetcher: typeof fetch): Route<Config>[] {
     { method: 'GET', path: '/api/status', auth: 'admin', async handler({ ctx }) {
       try {
         await ensureBackground(ctx)
+        const failure = await metaGet<{ status?: unknown; reason?: unknown; at?: unknown }>(ctx, 'last_api_failure')
+        const lastApiError = failure && typeof failure.status === 'number' && failure.status >= 400 && failure.status < 600
+          && API_REASONS.includes(failure.reason as typeof API_REASONS[number]) && typeof failure.at === 'number'
+          ? { status: failure.status, reason: failure.reason, at: failure.at } : null
         return Response.json({ executionMode: ctx.config.executionMode, model: ctx.config.model,
+          lastApiError,
           lastPollAt: await metaGet(ctx, 'last_cron_or_callback'),
           tasks: await ctx.db.all('SELECT state,model,created,updated,model_ms,error FROM {async_tasks} WHERE bot=? ORDER BY created DESC LIMIT 10', ctx.botId),
         }, { headers: { 'cache-control': 'no-store' } })

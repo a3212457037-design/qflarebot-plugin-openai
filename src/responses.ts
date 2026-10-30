@@ -5,6 +5,8 @@ import { isModelId } from './models.js'
 
 export const RESPONSES_URL = 'https://api.openai.com/v1/responses'
 export const RESPONSE_BYTES = 8 * 1024 * 1024
+export const API_REASONS = ['AUTH', 'INVALID_API_KEY', 'REGION_UNSUPPORTED', 'IP_NOT_AUTHORIZED', 'INSUFFICIENT_PERMISSIONS', 'MODEL_ACCESS_DENIED', 'ORG_VERIFICATION_REQUIRED', 'PROJECT_OR_ORG_ACCESS',
+  'TIMEOUT', 'RATE', 'QUOTA', 'MODEL', 'REQUEST', 'UNAVAILABLE', 'NETWORK', 'RESPONSE', 'BLOCKED', 'SEARCH'] as const
 export const object = (value: unknown): Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 export const tips = {
   timeout: 'AI 响应超时，请稍后再试。', rate: '请求过于频繁或额度已用完，请稍后再试。',
@@ -37,7 +39,19 @@ export function apiError(status: number, value: unknown): OpenAIError {
   else if (status === 404 || code === 'model_not_found') category = 'model'
   else if (status >= 500) category = 'unavailable'
   else if (code === 'content_policy_violation') category = 'blocked'
-  return new OpenAIError(category, undefined, { status, reason: category.toUpperCase() })
+  let reason = category.toUpperCase()
+  if (category === 'auth') {
+    // 原始报错仅在内存中识别固定类别，绝不返回/保存/记录 message 或任意 code。
+    const detail = `${code} ${type} ${typeof error.message === 'string' ? error.message : ''}`.toLowerCase()
+    if (code === 'unsupported_country_region_territory' || /(?:country|region|territory).{0,60}(?:not supported|unsupported)/u.test(detail)) reason = 'REGION_UNSUPPORTED'
+    else if (code === 'ip_not_authorized' || /ip.{0,30}(?:not authorized|allowlist)/u.test(detail)) reason = 'IP_NOT_AUTHORIZED'
+    else if (code === 'invalid_api_key' || /incorrect api key|invalid api key/u.test(detail)) reason = 'INVALID_API_KEY'
+    else if (/must be verified|organization.{0,30}verif|organisation.{0,30}verif/u.test(detail)) reason = 'ORG_VERIFICATION_REQUIRED'
+    else if (/missing scopes|insufficient permissions|insufficient_permissions/u.test(detail)) reason = 'INSUFFICIENT_PERMISSIONS'
+    else if (code === 'model_not_found' || /model.{0,80}(?:not have access|not authorized|not allowed|permission)/u.test(detail)) reason = 'MODEL_ACCESS_DENIED'
+    else if (/organization|organisation|project/u.test(detail)) reason = 'PROJECT_OR_ORG_ACCESS'
+  }
+  return new OpenAIError(category, undefined, { status, reason })
 }
 export async function readJson(response: Response, maxBytes = RESPONSE_BYTES): Promise<unknown> {
   const reader = response.body?.getReader()

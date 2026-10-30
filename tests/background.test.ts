@@ -160,6 +160,16 @@ describe('SDK聊天、后台持久化与投递', () => {
     expect(await b.task()).toMatchObject({ state: 'submit_unknown' })
     expect(JSON.stringify((b.ctx.logger.warn as ReturnType<typeof vi.fn>).mock.calls)).not.toContain(config.apiKey)
   })
+  it('权限失败在管理员任务页只显示固定分类和状态，不暴露提供商原文', async () => {
+    const b = await harness()
+    b.fetcher.mockResolvedValue(Response.json({ error: { code: 'unsupported_country_region_territory', message: config.apiKey } }, { status: 403 }))
+    expect(await b.invoke()).toContain('权限异常')
+    const route = b.plugin.routes!.find(r => r.path === '/api/status')!
+    const response = await route.handler({ ctx: b.ctx, request: new Request('https://bot.test'), params: {}, authenticated: true })
+    const text = await response.text()
+    expect(JSON.parse(text).lastApiError).toMatchObject({ status: 403, reason: 'REGION_UNSUPPORTED' })
+    expect(text).not.toContain(config.apiKey)
+  })
   it('QQ发送结果未知不盲目换seq重发，/reset可解除阻塞', async () => {
     const b = await harness(); await b.invoke(); b.ctx.api.sendMessage = vi.fn().mockRejectedValue(new Error(config.apiKey))
     await b.poll(); await b.poll()

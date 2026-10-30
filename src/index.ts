@@ -6,7 +6,7 @@ import { conversationKey, loadHistory, saveHistory, type ChatMessage } from './h
 import { hideKey } from './grounding.js'
 import { deliverAnswer, deliverPending, loadPending, pendingKeys, GENERATION_BUDGET_MS, TURN_BUDGET_MS } from './delivery.js'
 import { resolveModel, parseModelChoice, saveModel, modelMenu, ModelStateError } from './models.js'
-import { abandonBackground, BackgroundError, cancelBackground, hasBackground, processBackground, reserveBackground, submitBackground, type Task } from './background.js'
+import { abandonBackground, BackgroundError, cancelBackground, hasBackground, metaPut, processBackground, reserveBackground, submitBackground, type Task } from './background.js'
 import { backgroundRoutes } from './background-panel.js'
 
 export function createOpenAIPlugin(fetcher: typeof fetch = (...args) => fetch(...args)) {
@@ -81,6 +81,9 @@ export function createOpenAIPlugin(fetcher: typeof fetch = (...args) => fetch(..
         return error.message
       }
       const code = error instanceof OpenAIError ? error.code : 'unavailable'
+      if (error instanceof OpenAIError && error.api) {
+        await metaPut(ctx, 'last_api_failure', { status: error.api.status, reason: error.api.reason, at: Date.now() }).catch(() => {})
+      }
       ctx.logger.warn('OpenAI 请求未完成', {
         code,
         ...(error instanceof OpenAIError && error.diagnostic ? { error: error.diagnostic } : {}),

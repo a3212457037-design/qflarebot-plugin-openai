@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defaultConfig, readConfig, configSchema } from './config.js'
 import { MODEL_IDS, parseModelChoice } from './models.js'
-import { askOpenAI, createInteraction, getInteraction, interactionAnswer, responseBody, RESPONSES_URL, RESPONSE_BYTES } from './responses.js'
+import { apiError, askOpenAI, createInteraction, getInteraction, interactionAnswer, responseBody, RESPONSES_URL, RESPONSE_BYTES } from './responses.js'
 import { message } from './history.js'
 
 const config = { ...defaultConfig, apiKey: 'local-openai-test-credential' }
@@ -86,6 +86,21 @@ describe('官方 Responses API', () => {
   it('429不足额度区别限流', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ error: { code: 'insufficient_quota' } }, { status: 429 }))
     await expect(askOpenAI('问题', config, fetcher)).rejects.toMatchObject({ code: 'quota' })
+  })
+  it.each([
+    ['unsupported_country_region_territory', 'Country, region, or territory not supported', 'REGION_UNSUPPORTED'],
+    ['ip_not_authorized', 'IP not authorized', 'IP_NOT_AUTHORIZED'],
+    ['invalid_api_key', 'Incorrect API key provided', 'INVALID_API_KEY'],
+    ['', 'Missing scopes: model.request', 'INSUFFICIENT_PERMISSIONS'],
+    ['model_not_found', 'model unavailable', 'MODEL_ACCESS_DENIED'],
+    ['', 'Your organization must be verified', 'ORG_VERIFICATION_REQUIRED'],
+    ['', 'You must be a member of an organization', 'PROJECT_OR_ORG_ACCESS'],
+    [config.apiKey, config.apiKey, 'AUTH'],
+  ])('403固定原因分类%s，不输出原始报错或密钥', (code, text, reason) => {
+    const error = apiError(403, { error: { code, message: `${text} ${config.apiKey}`, details: { secret: config.apiKey } } })
+    expect(error).toMatchObject({ code: 'auth', api: { status: 403, reason } })
+    expect(error.message).toBe('AI 密钥或访问权限异常，请联系机器人管理员。')
+    expect(JSON.stringify(error)).not.toContain(config.apiKey)
   })
   it.each([301, 302, 307, 308])('HTTP%s不跟随，不把Key发往重定向目标', async status => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response('', { status, headers: { location: 'https://evil.test' } }))
