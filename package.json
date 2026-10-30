@@ -1,0 +1,30 @@
+{
+  "name": "qflarebot-plugin-openai",
+  "version": "0.1.0",
+  "description": "QFlareBot 的 OpenAI 官方 Responses API 插件，支持原生搜索与后台自动回复",
+  "license": "MIT",
+  "type": "module",
+  "keywords": [
+    "qflarebot-plugin",
+    "gemini"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "qqbot-plugin build",
+    "sync": "npm run build && node scripts/manifest.mjs --sync",
+    "check:manifest": "node scripts/manifest.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:workers": "node scripts/workers-smoke.mjs",
+    "test:install": "node scripts/install-smoke.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "4.20260702.1",
+    "@qqbot/plugin-cli": "file:../QFlareBot/packages/plugin-cli",
+    "@qqbot/sdk": "file:../QFlareBot/packages/sdk",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+.wrangler/
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+*.log
+local-settings*.json
