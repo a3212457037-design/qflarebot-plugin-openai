@@ -5,7 +5,7 @@ import { API_REASONS } from './responses.js'
 
 const PAGE = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><link rel="stylesheet" href="/tokens.css">
 <style>body{font:16px system-ui;padding:20px;line-height:1.6}pre{white-space:pre-wrap;overflow-wrap:anywhere}button{padding:10px}</style>
-<h2>OpenAI 后台任务</h2><p>使用已有 D1、KV 和每分钟 Cron 自动回复，不需要 /result。后台模式允许远端推理超过 30 秒；单聊原消息 60 分钟、群聊 5 分钟内有效。</p>
+<h2>OpenAI 后台任务</h2><p>使用已有 D1、KV 自动回复，不需要 /result。可选签名 Webhook 通知（Cron 仅恢复已收到的通知），或原有 Cron 轮询。单聊原消息 60 分钟、群聊 5 分钟内有效。</p>
 <p>模型权限以当前 OpenAI 项目为准。本页仅显示安全状态，不读取或展示密钥、用户标识、问题或回答。/reset 取消当前会话未完成任务；已在途的 QQ 消息无法撤回。</p>
 <button id="refresh">刷新任务状态</button><pre id="result">正在读取…</pre>
 <script type="module">import {createBridge} from '/bridge.js';const bridge=await createBridge();const button=document.getElementById('refresh');
@@ -23,6 +23,8 @@ export function backgroundRoutes(_fetcher: typeof fetch): Route<Config>[] {
           && API_REASONS.includes(failure.reason as typeof API_REASONS[number]) && typeof failure.at === 'number'
           ? { status: failure.status, reason: failure.reason, at: failure.at } : null
         return Response.json({ executionMode: ctx.config.executionMode, model: ctx.config.model,
+          backgroundDelivery: ctx.config.backgroundDelivery ?? 'cron',
+          lastVerifiedWebhookAt: await metaGet(ctx, 'last_verified_webhook'),
           lastApiError,
           lastPollAt: await metaGet(ctx, 'last_cron_or_callback'),
           tasks: await ctx.db.all('SELECT state,model,created,updated,model_ms,error FROM {async_tasks} WHERE bot=? ORDER BY created DESC LIMIT 10', ctx.botId),

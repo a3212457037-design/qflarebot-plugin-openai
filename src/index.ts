@@ -8,6 +8,7 @@ import { deliverAnswer, deliverPending, loadPending, pendingKeys, GENERATION_BUD
 import { resolveModel, parseModelChoice, saveModel, modelMenu, ModelStateError } from './models.js'
 import { abandonBackground, BackgroundError, cancelBackground, hasBackground, metaPut, processBackground, reserveBackground, submitBackground, type Task } from './background.js'
 import { backgroundRoutes } from './background-panel.js'
+import { drainWebhooks, webhookRoutes } from './webhook.js'
 
 export function createOpenAIPlugin(fetcher: typeof fetch = (...args) => fetch(...args)) {
   // 只保存冷却时间，不保存问答。Worker isolate 重建或扩容后会重置，非全局强限流。
@@ -27,8 +28,9 @@ export function createOpenAIPlugin(fetcher: typeof fetch = (...args) => fetch(..
     const config = readConfig(ctx.config)
     if (!config) return 'AI 配置异常，请联系机器人管理员。'
     if (!config.apiKey || config.apiKey.startsWith('__qflare_secret__:')) return 'AI 尚未配置，请联系机器人管理员。'
+    if (config.executionMode === 'background' && config.backgroundDelivery === 'webhook' && !config.webhookSecret) return 'AI 回调尚未配置，请联系机器人管理员。'
     if (Array.from(question).length > config.maxInputChars) return `问题太长，请限制在 ${config.maxInputChars} 字符以内。`
-    question = hideKey(question, config.apiKey)
+    question = hideKey(question, config.apiKey, config.webhookSecret ?? '')
     if (forceSearch && !config.enableWebSearch) return '联网搜索未开启，请联系机器人管理员。'
 
     const now = Date.now()
@@ -107,11 +109,14 @@ export function createOpenAIPlugin(fetcher: typeof fetch = (...args) => fetch(..
     configSchema,
     defaultConfig,
     ui: { path: '/ui/', title: 'OpenAI 后台任务', icon: 'Clock' },
-    routes: backgroundRoutes(fetcher),
+    routes: [...backgroundRoutes(fetcher), ...webhookRoutes(fetcher)],
     cron: { background: { cron: '* * * * *', async handler({ ctx }) {
       const config = readConfig(ctx.config)
       if (!config?.apiKey) return
-      try { await processBackground(ctx, config, fetcher) }
+      try {
+        if (config.backgroundDelivery === 'webhook') await drainWebhooks(ctx, config, fetcher)
+        else await processBackground(ctx, config, fetcher)
+      }
       catch { ctx.logger.warn('OpenAI 后台轮询不可用', { code: 'background_poll' }) }
     } } },
     commands: {
@@ -178,8 +183,8 @@ export function createOpenAIPlugin(fetcher: typeof fetch = (...args) => fetch(..
             const config = readConfig(ctx.config)
             if (!config) return 'AI 配置异常，请联系机器人管理员。'
             // 已保存文本再次做双密钥脱敏；不读取或打印真实密钥。
-            const prefix = hideKey(pending.text.slice(0, pending.offset), config.apiKey)
-            pending.text = hideKey(pending.text, config.apiKey)
+            const prefix = hideKey(pending.text.slice(0, pending.offset), config.apiKey, config.webhookSecret ?? '')
+            pending.text = hideKey(pending.text, config.apiKey, config.webhookSecret ?? '')
             pending.offset = prefix.length
             return await deliverPending(session, ctx, pending, now + TURN_BUDGET_MS, () => resetDuringRequest)
           } catch {

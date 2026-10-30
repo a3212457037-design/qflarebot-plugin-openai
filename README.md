@@ -8,7 +8,7 @@
 - `/ai 问题`：保留命令用法。`/model` 查看、`/model 2` 或模型 ID 切换当前用户当前会话；`/model default` 跟随后台默认，切换保留上下文。Terra 可用 `/model 4` 或 `/model gpt-6.1-terra`。
 - 最近 **6 轮完整问答**，最后一次成功后 **24 小时 TTL**；按机器人、私聊用户或群+用户隔离。`/reset` 只清除当前会话，并取消该会话旧任务，不清除 Key、模型偏好或其他用户数据。
 - OpenAI 原生 `web_search`，没有 Tavily 或第三方搜索 API。开启时模型按需搜索，`/search 关键词` 强制搜索；仅展示实际返回的 URL 引用，过滤非 HTTP(S)、携带凭据或 Key 的链接，不输出推理、工具原文和内部元数据。
-- 默认 OpenAI 后台推理，由每分钟 Cron 自动轮询并用原始 QQ `msg_id`、正确 `msg_seq` 自动回复，普通答案不需要 `/result` 或 `/more`。
+- 默认 OpenAI 后台推理，可选签名 Webhook 通知，兼容原有每分钟 Cron 轮询。复用原始 QQ `msg_id`、正确 `msg_seq` 自动回复，普通答案不需要 `/result` 或 `/more`。
 - 无 500 字符/1500 字节的总正文裁剪；长文本按约 2000 UTF-8 字节分段。单条原消息的条数用完后，完整剩余正文保存 24 小时，`/more` 继续领取，不重新生成或搜索。
 
 ## 安装与配置
@@ -26,6 +26,8 @@
 | --- | --- | --- |
 | 默认模型 | `gpt-6.1-terra` | 另外可选 `gpt-6-luna`、`gpt-6.1-sol`、`gpt-6-astra`；权限由 OpenAI 项目决定，不自动换模型或重试生成 |
 | 推理执行模式 | `background` | 后台推理 + Cron 自动回复；`responses` 为同步模式 |
+| 后台结果通知方式 | `cron` | 可选 `webhook`，该模式不再轮询无通知的远端任务 |
+| OpenAI Webhook 签名密钥 | 空 | 项目 Webhook 提供的 `whsec_`，writeOnly，与 API Key 不同 |
 | 推理档位 | `high` | 默认 Terra + high；四个内置模型均支持 high/max，可在后台降低档位 |
 | 原生联网搜索 | 开启 | `tool_choice: auto`，模型按需使用；`/search` 为 `required`；每轮最多 3 次内置工具调用 |
 | 生成 Token 上限 | `128000` | 四个内置模型官方上限，包含推理 Token；允许最大值，并非要求每次生成这么长 |
@@ -45,7 +47,24 @@
 - 提交或 QQ 发送结果不确定时不盲目重发，需 `/reset` 后继续新问题。HTTP 投递与数据库无法组成同一事务，不声称跨平台绝对 exactly-once。手动 `/more` 可能重复发送结果不确定的最后一段。
 - QQ 被动回复窗口：私聊原消息 60 分钟、群聊 5 分钟，截止前留 15 秒余量。过期不转成主动消息；私聊保守按 4 条、群聊按 5 条分段。本插件不能绕过 QQ 限制。
 - 内存级 6 秒全局冷却、10 秒用户冷却和忙碌保护；isolate 重建/扩容会重置内存限流。持久化唯一约束负责同会话后台任务的并发保护。
-- 首版使用 Cron 自动投递，没有要求用户另配 Webhook。实际账户模型权限、搜索可用性及 QQ 投递需在安装和保存自己 Key 后验证；本地替身测试不能证明真实 API 授权。
+- 未配置 Webhook 时保留原有 Cron 自动投递。实际账户模型权限、搜索可用性及 QQ 投递需真实验证；本地替身测试不能证明真实 API 授权。
+
+## 可选 Webhook 通知
+
+先验证当前 Worker 能成功创建后台 Response；401/403 时换用 Webhook 不能解决初始 API 访问失败。
+
+1. 在 [OpenAI 项目 Webhooks](https://platform.openai.com/settings/project/webhooks) 新建端点，URL 为你的面板域名加 `/p/openai/callback`，例如 `https://qqbot2145.eu.cc/p/openai/callback`。须与 API Key 属于同一项目。
+2. 订阅 `response.completed`、`response.failed`、`response.incomplete`、`response.cancelled`。将仅显示一次的签名密钥自行填写到插件设置的「OpenAI Webhook 签名密钥」，选择后台结果通知方式 `webhook`，保存配置。不要发到聊天或提交仓库。
+3. 端点仅在 OpenAI 插件启用时可访问。保留 Gemini 日常运行时让 OpenAI 停用；真实验收时短暂切换，避免两个插件抢答。
+4. 使用 Web Crypto HMAC-SHA256 验证原始字节、`webhook-id` 和秒级时间戳（前后五分钟），支持多签名轮换；拒绝超大正文及未验证请求。签名密钥不发送给 OpenAI Responses API。
+5. 通知先写入现有 D1 收件箱再返回 204，通过 `ctx.waitUntil` 获取结果并回复。唯一通知 ID、已有任务原子认领和会话代次共同处理重复、并发与 reset；发送结果不确定时仍不盲目重发。
+6. **Webhook 模式保留每分钟 Cron 作为已收到通知的恢复器，不再轮询没有收到通知的远端任务。** 如果回调丢失，依赖 OpenAI 的投递重试；禁用插件、签名密钥填错或超过 QQ 回复窗口仍可能无法自动回复。管理页显示最后一次有效签名通知时间，不显示密钥、通知正文或 Response ID。
+
+依据：[OpenAI Webhooks](https://developers.openai.com/api/docs/guides/webhooks) 与其链接的 [Standard Webhooks 规范](https://github.com/standard-webhooks/standard-webhooks/blob/main/spec/standard-webhooks.md)。
+
+### Cloudflare Placement Hints
+
+`placement.region`（例如 `aws:us-east-1`）或 HTTP `placement.hostname` 是 **Worker 级部署配置**，不是插件的 fetch 参数；HTTP 主机提示测量延迟，不等同于指定美国出口。它只影响 fetch 事件，不控制 Cron/RPC，不能保证固定执行地点或 OpenAI 接受出口地区。这里不修改共用 Worker 的 Placement，以免影响 Gemini；这次真实后台提交已在现有部署被接受，不需要为了 Webhook先改全局放置策略。[Cloudflare 官方说明](https://developers.cloudflare.com/workers/configuration/placement/)
 
 ## 本地开发
 

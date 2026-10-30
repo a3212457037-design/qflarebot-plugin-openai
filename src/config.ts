@@ -11,12 +11,15 @@ export interface Config {
   maxOutputTokens: number
   timeoutMs: number
   ignoredCommandPrefixes: string[]
+  backgroundDelivery?: 'cron' | 'webhook'
+  webhookSecret?: string
 }
 
 export const defaultConfig: Config = {
   apiKey: '', model: 'gpt-6.1-terra', executionMode: 'background', reasoningEffort: 'high',
   enableWebSearch: true, maxInputChars: 1000, maxOutputTokens: 128000, timeoutMs: 27000,
   ignoredCommandPrefixes: ['/'],
+  backgroundDelivery: 'cron', webhookSecret: '',
 }
 const ranges = { maxInputChars: [1, 1000], maxOutputTokens: [64, 128000], timeoutMs: [1000, 27000] } as const
 const integer = (key: keyof typeof ranges, title: string) => ({
@@ -31,6 +34,10 @@ export const configSchema: JsonSchema = {
       description: '聊天用 /model 切换当前会话，/model default 跟随后台默认。权限及额度以 OpenAI 项目为准，不自动换模型。' },
     executionMode: { type: 'string', title: '推理执行模式', enum: ['responses', 'background'], default: 'background',
       description: '默认后台推理，由现有每分钟 Cron 自动回复，支持超过 30 秒的推理。responses 为同步模式，最多等待 27 秒。后台需要现有 D1、KV 和每分钟 Cron。' },
+    backgroundDelivery: { type: 'string', title: '后台结果通知方式', enum: ['cron', 'webhook'], default: 'cron',
+      description: 'cron 保留原有轮询；webhook 使用签名回调触发取结果，Cron 仅恢复已收到的通知，不轮询无通知的远端任务。切换前请配置 OpenAI 项目 Webhook。' },
+    webhookSecret: { type: 'string', title: 'OpenAI Webhook 签名密钥', writeOnly: true, default: '', maxLength: 256,
+      description: '填写 OpenAI Webhook 提供的 whsec_ 签名密钥，区别于 API Key。回调地址为本站 /p/openai/callback。保存后不回显。' },
     reasoningEffort: { type: 'string', title: '推理档位', enum: ['low', 'medium', 'high', 'xhigh', 'max'], default: defaultConfig.reasoningEffort,
       description: '四个内置模型均支持 high 与 max，默认 Terra + high。高推理可能增加延迟和 Token 消耗，建议保持后台模式。' },
     enableWebSearch: { type: 'boolean', title: '启用 OpenAI 原生联网搜索', default: true,
@@ -47,6 +54,13 @@ export const configSchema: JsonSchema = {
 export function readConfig(value: Config): Config | null {
   if (!value || typeof value !== 'object') return null
   const config = { ...defaultConfig, ...value }
+  if (!['cron', 'webhook'].includes(config.backgroundDelivery ?? '') || typeof config.webhookSecret !== 'string'
+    || config.webhookSecret.length > 256) return null
+  config.webhookSecret = config.webhookSecret.trim()
+  if (config.webhookSecret && !/^whsec_[A-Za-z0-9+/]+={0,2}$/u.test(config.webhookSecret)) return null
+  if (config.webhookSecret) {
+    try { const length = atob(config.webhookSecret.slice(6)).length; if (length < 24 || length > 64) return null } catch { return null }
+  }
   if (!isModelId(config.model) || !['responses', 'background'].includes(config.executionMode)
     || !['low', 'medium', 'high', 'xhigh', 'max'].includes(config.reasoningEffort)
     || typeof config.enableWebSearch !== 'boolean' || typeof config.apiKey !== 'string' || config.apiKey.length > 4096) return null

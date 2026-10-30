@@ -85,6 +85,11 @@
       "method": "GET",
       "path": "/api/status",
       "auth": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/callback",
+      "auth": "public"
     }
   ],
   "hasMiddleware": false,
@@ -124,6 +129,24 @@
         ],
         "default": "background",
         "description": "默认后台推理，由现有每分钟 Cron 自动回复，支持超过 30 秒的推理。responses 为同步模式，最多等待 27 秒。后台需要现有 D1、KV 和每分钟 Cron。"
+      },
+      "backgroundDelivery": {
+        "type": "string",
+        "title": "后台结果通知方式",
+        "enum": [
+          "cron",
+          "webhook"
+        ],
+        "default": "cron",
+        "description": "cron 保留原有轮询；webhook 使用签名回调触发取结果，Cron 仅恢复已收到的通知，不轮询无通知的远端任务。切换前请配置 OpenAI 项目 Webhook。"
+      },
+      "webhookSecret": {
+        "type": "string",
+        "title": "OpenAI Webhook 签名密钥",
+        "writeOnly": true,
+        "default": "",
+        "maxLength": 256,
+        "description": "填写 OpenAI Webhook 提供的 whsec_ 签名密钥，区别于 API Key。回调地址为本站 /p/openai/callback。保存后不回显。"
       },
       "reasoningEffort": {
         "type": "string",
@@ -200,7 +223,9 @@
     "timeoutMs": 27000,
     "ignoredCommandPrefixes": [
       "/"
-    ]
+    ],
+    "backgroundDelivery": "cron",
+    "webhookSecret": ""
   },
   "ui": {
     "path": "/ui/",

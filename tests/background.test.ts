@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite'
+import { createHmac } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryKV, createMockContext, createMockSession } from '@qqbot/sdk/testing'
 import { normalizePlugin, extractManifest, type DBStatement, type PluginDB, type Session } from '@qqbot/sdk'
@@ -9,6 +10,7 @@ import { ensureBackground, processBackground, reserveBackground, type Task } fro
 import { RESPONSES_URL } from '../src/responses.js'
 import { conversationKey, loadHistory, message } from '../src/history.js'
 import { loadPending, splitText, MORE_TIP } from '../src/delivery.js'
+import { webhookRoutes } from '../src/webhook.js'
 const config: Config = { ...defaultConfig, apiKey: 'local-background-test-credential' }
 const result = (text = '后台回答', id = 'resp_test', status = 'completed') => ({ id, status, output: [
   { type: 'reasoning', summary: [{ type: 'summary_text', text: '内部推理不可见' }] },
@@ -205,10 +207,86 @@ describe('SDK聊天、后台持久化与投递', () => {
     expect(manifest.name).toBe('openai'); expect(manifest.permissions).toEqual(['net', 'kv', 'db'])
     expect(manifest.commands.map(c => c.name)).toEqual(['ai', 'search', 'model', 'more', 'reset'])
     expect(manifest.cron).toEqual([{ name: 'background', cron: '* * * * *' }])
-    expect(b.plugin.routes?.every(r => r.auth === 'admin')).toBe(true)
+    expect(b.plugin.routes?.filter(r => r.path !== '/callback').every(r => r.auth === 'admin')).toBe(true)
+    expect(b.plugin.routes?.find(r => r.path === '/callback')?.auth).toBe('public')
     const route = b.plugin.routes!.find(r => r.path === '/api/status')!
     const response = await route.handler({ ctx: b.ctx, request: new Request('https://bot.test'), params: {}, authenticated: true })
     const text = await response.text(); expect(text).not.toContain(config.apiKey)
     expect(text).not.toContain('userId'); expect(text).not.toContain('resp_test')
+  })
+})
+
+const webhookSecret = 'whsec_' + Buffer.from('local-webhook-signing-key-32bytes').toString('base64')
+async function webhookHarness() {
+  const b = await harness()
+  b.ctx.config = { ...config, backgroundDelivery: 'webhook', webhookSecret }
+  const jobs: Promise<unknown>[] = []
+  b.ctx.waitUntil = p => { jobs.push(p) }
+  const route = webhookRoutes(b.fetcher)[0]!
+  const callback = async (id = 'wh_once', responseId = 'resp_test', type = 'response.completed', valid = true) => {
+    const body = JSON.stringify({ type, data: { id: responseId } }); const timestamp = String(Math.floor(Date.now() / 1000))
+    const signature = createHmac('sha256', Buffer.from(webhookSecret.slice(6), 'base64')).update(`${id}.${timestamp}.${body}`).digest('base64')
+    return route.handler({ ctx: b.ctx, authenticated: false, params: {}, request: new Request('https://bot.test/p/openai/callback', {
+      method: 'POST', body, headers: { 'webhook-id': id, 'webhook-timestamp': timestamp, 'webhook-signature': 'v1,' + (valid ? signature : 'bad') },
+    }) })
+  }
+  return { ...b, callback, jobs, drain: () => Promise.all(jobs), cron: () => b.plugin.cron!.background!.handler({ ctx: b.ctx, job: 'background', scheduledAt: Date.now() }) }
+}
+describe('签名通知驱动自动回复', () => {
+  it('无通知时 Cron 不轮询远端；通知触发 GET、原msg_id投递和六轮上下文', async () => {
+    const b = await webhookHarness(); await b.invoke(); await b.cron()
+    expect(b.fetcher).toHaveBeenCalledTimes(1)
+    expect((await b.callback()).status).toBe(204); await b.drain()
+    expect(await b.task()).toMatchObject({ state: 'delivered', seq: 1 })
+    expect(b.ctx.api.sendMessage).toHaveBeenCalledExactlyOnceWith({ scene: 'c2c', id: 'user' }, '后台回答', { messageId: 'm1', msgSeq: 1 })
+    expect(await loadHistory(b.kv, conversationKey(b.session)!)).toEqual([message('user', '你好'), message('model', '后台回答')])
+  })
+  it('并发重复通知与 Cron 共享认领，不重复回复；未知 Response 不调用 API', async () => {
+    const b = await webhookHarness(); await b.invoke()
+    await Promise.all([b.callback(), b.callback(), b.callback('wh_second'), b.cron()]); await b.drain()
+    await b.callback(); await b.drain(); await b.cron()
+    expect(b.ctx.api.sendMessage).toHaveBeenCalledTimes(1)
+    expect((await b.callback('wh_other', 'resp_unrelated')).status).toBe(204)
+    expect(b.fetcher).toHaveBeenCalledTimes(2)
+  })
+  it('通知提前到达提交落库前返回503，供 OpenAI 重试', async () => {
+    const b = await webhookHarness(); const task = await reserveBackground(b.ctx, b.session, b.ctx.config)
+    await b.db.run("UPDATE {async_tasks} SET state='submitting' WHERE id=?", task.id)
+    expect((await b.callback()).status).toBe(503)
+    expect(b.fetcher).not.toHaveBeenCalled()
+  })
+  it('完成通知绕过旧轮询next_poll；无效签名及关闭开关不调用API', async () => {
+    const b = await webhookHarness(); await b.invoke()
+    await b.db.run('UPDATE {async_tasks} SET next_poll=?', Date.now() + 45000)
+    expect((await b.callback('wh_bad', 'resp_test', 'response.completed', false)).status).toBe(400)
+    expect(b.fetcher).toHaveBeenCalledTimes(1)
+    expect((await b.callback()).status).toBe(204); await b.drain()
+    expect(b.ctx.api.sendMessage).toHaveBeenCalledTimes(1)
+    b.ctx.config.backgroundDelivery = 'cron'
+    expect((await b.callback()).status).toBe(503)
+  })
+  it('reset后旧通知不回复、不恢复历史', async () => {
+    const b = await webhookHarness(); await b.invoke(); await b.invoke('reset')
+    expect((await b.callback()).status).toBe(204); await b.drain()
+    expect(b.ctx.api.sendMessage).not.toHaveBeenCalled()
+    expect(b.fetcher).toHaveBeenCalledTimes(1)
+    expect(await loadHistory(b.kv, conversationKey(b.session)!)).toEqual([])
+  })
+  it('回调GET失败后通过持久化收件箱Cron恢复，无需再次通知', async () => {
+    vi.useFakeTimers(); const b = await webhookHarness(); await b.invoke()
+    b.fetcher.mockRejectedValueOnce(new TypeError('local network error'))
+    await b.callback(); await b.drain(); expect(b.ctx.api.sendMessage).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(61000); await b.cron()
+    expect(await b.task()).toMatchObject({ state: 'delivered' })
+    expect(b.ctx.api.sendMessage).toHaveBeenCalledTimes(1)
+  })
+  it('failed通知获取真实错误，仅发固定提示，不保存失败问答或密钥', async () => {
+    const b = await webhookHarness(); await b.invoke()
+    b.fetcher.mockResolvedValueOnce(Response.json({ id: 'resp_test', status: 'failed', error: { code: 'insufficient_quota', message: config.apiKey + webhookSecret } }))
+    await b.callback('wh_failed', 'resp_test', 'response.failed'); await b.drain()
+    const text = String((b.ctx.api.sendMessage as ReturnType<typeof vi.fn>).mock.calls[0]![1])
+    expect(text).toContain('额度不足'); expect(await loadHistory(b.kv, conversationKey(b.session)!)).toEqual([])
+    const output = JSON.stringify([text, (b.ctx.logger.warn as ReturnType<typeof vi.fn>).mock.calls])
+    expect(output).not.toContain(config.apiKey); expect(output).not.toContain(webhookSecret)
   })
 })

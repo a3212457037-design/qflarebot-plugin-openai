@@ -21,9 +21,9 @@ export class OpenAIError extends Error {
     super(tips[code]); this.name = 'OpenAIError'
   }
 }
-export function safeDiagnostic(error: unknown, key: string) {
+export function safeDiagnostic(error: unknown, key: string, ...otherKeys: string[]) {
   if (!(error instanceof Error)) return { name: 'UnknownError', message: 'Non-Error exception' }
-  const clean = (s: string, limit: number) => Array.from(hideKey(s, key).replace(/[\u0000-\u001f\u007f-\u009f]/gu, ' ').replace(/\s+/gu, ' ').trim()).slice(0, limit).join('')
+  const clean = (s: string, limit: number) => Array.from(hideKey(s, key, ...otherKeys).replace(/[\u0000-\u001f\u007f-\u009f]/gu, ' ').replace(/\s+/gu, ' ').trim()).slice(0, limit).join('')
   return { name: clean(error.name, 64), message: clean(error.message, 200) }
 }
 export function apiError(status: number, value: unknown): OpenAIError {
@@ -91,13 +91,13 @@ async function request(method: 'GET' | 'POST', config: Config, fetcher: typeof f
     ])
   } catch (error) {
     if (error instanceof OpenAIError) throw error
-    throw new OpenAIError('network', safeDiagnostic(error, config.apiKey))
+    throw new OpenAIError('network', safeDiagnostic(error, config.apiKey, config.webhookSecret ?? ''))
   } finally { if (timer !== undefined) clearTimeout(timer) }
 }
 export function responseBody(question: string, config: Config, history: ChatMessage[], forceSearch = false, background = false) {
   if (!isModelId(config.model)) throw new OpenAIError('model')
   if (forceSearch && !config.enableWebSearch) throw new OpenAIError('search')
-  const clean = (text: string) => hideKey(text, config.apiKey)
+  const clean = (text: string) => hideKey(text, config.apiKey, config.webhookSecret ?? '')
   return {
     model: config.model, background, store: background,
     input: [...history.slice(-12).map(m => ({ role: m.role === 'model' ? 'assistant' : 'user', content: clean(m.parts[0].text) })), { role: 'user', content: clean(question) }],
@@ -135,9 +135,9 @@ export function interactionAnswer(result: Record<string, unknown>, config: Confi
       const citations = (Array.isArray(part.annotations) ? part.annotations.map(object) : []).filter(a => a.type === 'url_citation')
       const replacements: { start: number; end: number; label: string }[] = []
       for (const citation of citations) {
-        const url = sourceUrl(citation.url, [config.apiKey])
+        const url = sourceUrl(citation.url, [config.apiKey, config.webhookSecret ?? ''])
         if (!url || url.length > 2048) continue
-        const title = hideKey(typeof citation.title === 'string' ? citation.title : new URL(url).hostname, config.apiKey)
+        const title = hideKey(typeof citation.title === 'string' ? citation.title : new URL(url).hostname, config.apiKey, config.webhookSecret ?? '')
           .replace(/[\u0000-\u001f\u007f-\u009f]/gu, ' ').trim()
         if (!seen.has(url)) { sources.push({ title, url }); seen.add(url) }
         const start = citation.start_index; const end = citation.end_index
@@ -155,7 +155,7 @@ export function interactionAnswer(result: Record<string, unknown>, config: Confi
       return text.replace(/[^]*/gu, '')
     })
   })
-  let text = hideKey(texts.join('\n'), config.apiKey).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu, '').trim()
+  let text = hideKey(texts.join('\n'), config.apiKey, config.webhookSecret ?? '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu, '').trim()
   if (!text) throw new OpenAIError('response')
   const missing = sources.filter(s => !text.includes(s.url)).slice(0, 2)
   if (missing.length) text += '\n来源：\n' + missing.map(s => `${Array.from(s.title).slice(0, 24).join('')} ${s.url}`).join('\n')
