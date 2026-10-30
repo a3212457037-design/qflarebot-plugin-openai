@@ -35,6 +35,16 @@
 | HTTP 超时 | `27000` 毫秒 | 同步模式最多 27 秒；后台提交与查询各最多 8 秒，远端推理可以继续 |
 | 跳过的命令前缀 | `/` | 自定义全局前缀需在此同步，SDK 不提供读取全局前缀接口 |
 
+### 可选 Cloudflare AI Gateway
+
+默认关闭，旧配置继续直连 OpenAI。验证官方网关时，在自有 Cloudflare 账户创建命名网关，关闭 Collect Logs、Cache Responses 和 Retry Requests，保留 Authenticated Gateway；不启用统一计费、充值、Guardrails 或第三方模型服务。认证 Token 只需要当前账户 AI Gateway Run 权限，由管理员自行创建并填写，不能当成 OpenAI API Key。
+
+插件新增三个设置：启用「使用 Cloudflare AI Gateway」、填写自有网关的 OpenAI 基础地址 `https://gateway.ai.cloudflare.com/v1/账户ID/网关ID/openai`、填写 writeOnly 的「AI Gateway Run Token」。原 OpenAI Key 保留。只接受固定官方域名及严格账户/网关路径，拒绝任意代理 URL；创建和查询 Response 均走同一网关，`redirect: manual` 不向重定向目标发送凭证。
+
+网关请求明确发送关闭日志/正文日志、跳过缓存、单次尝试的头；直连模式不发送网关 Token。异常、请求输入、回答及引用同时保护 API Key、Webhook 签名密钥和网关 Token。不回退到其他模型/端点，不声称网关能固定地区或必然解决 403。后台提交、查询、真实签名回调及 QQ 收取均须另行验证。
+
+官方依据：[OpenAI 原生网关端点](https://developers.cloudflare.com/ai-gateway/usage/providers/openai/)、[日志控制](https://developers.cloudflare.com/ai-gateway/observability/logging/)、[请求处理](https://developers.cloudflare.com/ai-gateway/configuration/request-handling/)。网关核心功能免费；OpenAI 推理仍按自己的项目计费。
+
 **费用：** 使用自己的 OpenAI API 项目额度，模型 Token 和原生 Web Search 按官方规则计费；不会开启计费或更改账户预算。工具次数限制、冷却和本地任务保护均不是账户费用的绝对上限。没有使用或承诺 Tavily 免费额度。
 
 ## 后台任务与平台限制

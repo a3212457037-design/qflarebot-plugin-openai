@@ -13,6 +13,9 @@ export interface Config {
   ignoredCommandPrefixes: string[]
   backgroundDelivery?: 'cron' | 'webhook'
   webhookSecret?: string
+  useAiGateway?: boolean
+  aiGatewayUrl?: string
+  aiGatewayToken?: string
 }
 
 export const defaultConfig: Config = {
@@ -20,6 +23,14 @@ export const defaultConfig: Config = {
   enableWebSearch: true, maxInputChars: 1000, maxOutputTokens: 128000, timeoutMs: 27000,
   ignoredCommandPrefixes: ['/'],
   backgroundDelivery: 'cron', webhookSecret: '',
+  useAiGateway: false, aiGatewayUrl: '', aiGatewayToken: '',
+}
+export function validGateway(config: Config): boolean {
+  return typeof config.aiGatewayUrl === 'string'
+    && /^https:\/\/gateway\.ai\.cloudflare\.com\/v1\/[0-9a-f]{32}\/[a-z0-9_-]{1,64}\/openai$/u.test(config.aiGatewayUrl)
+    && typeof config.aiGatewayToken === 'string' && config.aiGatewayToken.length > 0 && config.aiGatewayToken.length <= 4096
+    && !/[\u0000-\u0020\u007f-\u009f]/u.test(config.aiGatewayToken)
+    && !config.aiGatewayToken.startsWith('__qflare_secret__:')
 }
 const ranges = { maxInputChars: [1, 1000], maxOutputTokens: [64, 128000], timeoutMs: [1000, 27000] } as const
 const integer = (key: keyof typeof ranges, title: string) => ({
@@ -30,6 +41,12 @@ export const configSchema: JsonSchema = {
   properties: {
     apiKey: { type: 'string', title: 'OpenAI API Key', writeOnly: true, maxLength: 4096, default: '',
       description: '仅填写 OpenAI 官方 API Key，保存后不回显。独立于 Gemini；不要把密钥发到 QQ 或聊天中。' },
+    useAiGateway: { type: 'boolean', title: '使用 Cloudflare AI Gateway', default: false,
+      description: '可选官方网关传输，关闭时直连 OpenAI。不能保证解决地区限制；不启用统一计费，不自动回退或重试。' },
+    aiGatewayUrl: { type: 'string', title: 'AI Gateway OpenAI 基础地址', default: '', maxLength: 256,
+      description: '只接受自有 Cloudflare 网关：https://gateway.ai.cloudflare.com/v1/账户ID/网关ID/openai，不含 /responses。API Key 会随请求发送给此网关。' },
+    aiGatewayToken: { type: 'string', title: 'AI Gateway Run Token', writeOnly: true, default: '', maxLength: 4096,
+      description: '填写仅有当前账户 AI Gateway Run 权限的 Cloudflare API Token，区别于 OpenAI Key。保存后不回显。' },
     model: { type: 'string', title: '默认聊天模型', enum: [...MODEL_IDS], default: defaultConfig.model,
       description: '聊天用 /model 切换当前会话，/model default 跟随后台默认。权限及额度以 OpenAI 项目为准，不自动换模型。' },
     executionMode: { type: 'string', title: '推理执行模式', enum: ['responses', 'background'], default: 'background',
@@ -54,6 +71,11 @@ export const configSchema: JsonSchema = {
 export function readConfig(value: Config): Config | null {
   if (!value || typeof value !== 'object') return null
   const config = { ...defaultConfig, ...value }
+  if (typeof config.useAiGateway !== 'boolean' || typeof config.aiGatewayUrl !== 'string' || config.aiGatewayUrl.length > 256
+    || typeof config.aiGatewayToken !== 'string' || config.aiGatewayToken.length > 4096) return null
+  config.aiGatewayUrl = config.aiGatewayUrl.trim().replace(/\/$/u, '')
+  config.aiGatewayToken = config.aiGatewayToken.trim()
+  if (config.useAiGateway && !validGateway(config)) return null
   if (!['cron', 'webhook'].includes(config.backgroundDelivery ?? '') || typeof config.webhookSecret !== 'string'
     || config.webhookSecret.length > 256) return null
   config.webhookSecret = config.webhookSecret.trim()

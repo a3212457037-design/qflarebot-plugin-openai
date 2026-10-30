@@ -12,12 +12,13 @@ import {createScopedDB,createScopedKV} from '../QFlareBot/packages/runtime/src/s
 export default {async fetch(request,env,execution){
  const url=new URL(request.url); const mode=url.searchParams.get('mode'); const scene=url.searchParams.get('scene')??'c2c';
  const config={apiKey:'local-fake-background-key',model:'gpt-6.1-terra',executionMode:'background',reasoningEffort:'high',enableWebSearch:true,maxInputChars:1000,maxOutputTokens:65536,timeoutMs:27000,ignoredCommandPrefixes:['/']};
- const webhook=url.searchParams.get('transport')==='webhook'; if(webhook){config.backgroundDelivery='webhook';config.webhookSecret='whsec_'+btoa('local-smoke-signing-key-32-bytes!!');}
+ const webhook=url.searchParams.get('transport')==='webhook'; if(webhook){config.backgroundDelivery='webhook';config.webhookSecret='whsec_'+btoa('local-smoke-signing-key-32-bytes!!');config.useAiGateway=true;config.aiGatewayUrl='https://gateway.ai.cloudflare.com/v1/'+'a'.repeat(32)+'/local-test/openai';config.aiGatewayToken='local-gateway-token';}
  const responseId='resp_'+(webhook?'webhook_':'')+scene; const jobs=[];
  const db=createScopedDB(env.DB,'openai');const kv=createScopedKV(env.KV,'openai');
  const fetcher=async(input,init)=>{
-  if(!String(input).startsWith('https://api.openai.com/v1/responses'))throw new Error('unexpected host');
+  if(!String(input).startsWith(config.useAiGateway?config.aiGatewayUrl+'/responses':'https://api.openai.com/v1/responses'))throw new Error('unexpected host');
   if(init.redirect!=='manual'||init.headers.authorization!=='Bearer '+config.apiKey)throw new Error('unsafe request');
+  if(config.useAiGateway&&(init.headers['cf-aig-authorization']!=='Bearer '+config.aiGatewayToken||init.headers['cf-aig-collect-log']!=='false'||init.headers['cf-aig-skip-cache']!=='true'||init.headers['cf-aig-max-attempts']!=='1'))throw new Error('unsafe gateway headers');
   if(init.method==='POST'){
    const body=JSON.parse(init.body);if(!body.background||!body.store||body.reasoning.effort!=='high'||body.tools[0].type!=='web_search')throw new Error('invalid native request');
    return Response.json({id:responseId,status:'queued'});
@@ -67,6 +68,6 @@ try {
   assert.equal((await call('status')).sent.length,1);
   await Promise.all([call('callback','c2c','webhook'),call('callback','c2c','webhook')]);
   const notified=await call('status');assert.equal(notified.sent.length,2);assert.equal(notified.tasks.filter(t=>t.state==='delivered').length,2);
-  console.log('Webhook workerd：真实HMAC验签、D1通知持久化、免Cron远端轮询、重复通知仅投递一次通过');
+  console.log('Webhook workerd：真实HMAC验签、D1通知持久化、免Cron远端轮询、重复通知仅投递一次、Gateway传输与隐私头通过');
   console.log('后台 workerd + D1 + KV：提交持久化、跨请求自动回复、并发幂等、reset取消四项通过，包括原生搜索请求与真实来源渲染（外部API为替身）')
 } finally { await mf.dispose() }

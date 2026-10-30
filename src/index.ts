@@ -30,7 +30,7 @@ export function createOpenAIPlugin(fetcher: typeof fetch = (...args) => fetch(..
     if (!config.apiKey || config.apiKey.startsWith('__qflare_secret__:')) return 'AI 尚未配置，请联系机器人管理员。'
     if (config.executionMode === 'background' && config.backgroundDelivery === 'webhook' && !config.webhookSecret) return 'AI 回调尚未配置，请联系机器人管理员。'
     if (Array.from(question).length > config.maxInputChars) return `问题太长，请限制在 ${config.maxInputChars} 字符以内。`
-    question = hideKey(question, config.apiKey, config.webhookSecret ?? '')
+    question = hideKey(question, config.apiKey, config.webhookSecret ?? '', config.aiGatewayToken ?? '')
     if (forceSearch && !config.enableWebSearch) return '联网搜索未开启，请联系机器人管理员。'
 
     const now = Date.now()
@@ -183,8 +183,8 @@ export function createOpenAIPlugin(fetcher: typeof fetch = (...args) => fetch(..
             const config = readConfig(ctx.config)
             if (!config) return 'AI 配置异常，请联系机器人管理员。'
             // 已保存文本再次做双密钥脱敏；不读取或打印真实密钥。
-            const prefix = hideKey(pending.text.slice(0, pending.offset), config.apiKey, config.webhookSecret ?? '')
-            pending.text = hideKey(pending.text, config.apiKey, config.webhookSecret ?? '')
+            const prefix = hideKey(pending.text.slice(0, pending.offset), config.apiKey, config.webhookSecret ?? '', config.aiGatewayToken ?? '')
+            pending.text = hideKey(pending.text, config.apiKey, config.webhookSecret ?? '', config.aiGatewayToken ?? '')
             pending.offset = prefix.length
             return await deliverPending(session, ctx, pending, now + TURN_BUDGET_MS, () => resetDuringRequest)
           } catch {

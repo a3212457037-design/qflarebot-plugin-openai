@@ -1,4 +1,4 @@
-import type { Config } from './config.js'
+import { validGateway, type Config } from './config.js'
 import type { ChatMessage } from './history.js'
 import { hideKey, sourceUrl } from './grounding.js'
 import { isModelId } from './models.js'
@@ -71,14 +71,20 @@ export async function readJson(response: Response, maxBytes = RESPONSE_BYTES): P
 const validId = (id: unknown): id is string => typeof id === 'string' && /^resp_[A-Za-z0-9_-]{1,1024}$/u.test(id)
 async function request(method: 'GET' | 'POST', config: Config, fetcher: typeof fetch, body?: unknown, id?: string) {
   if (id !== undefined && !validId(id)) throw new OpenAIError('response')
+  if (config.useAiGateway && !validGateway(config)) throw new OpenAIError('request')
+  const endpoint = config.useAiGateway ? `${config.aiGatewayUrl}/responses` : RESPONSES_URL
   const controller = new AbortController(); let timer: ReturnType<typeof setTimeout> | undefined
   const timeoutMs = config.executionMode === 'background' || method === 'GET' ? Math.min(config.timeoutMs, 8000) : config.timeoutMs
   try {
     return await Promise.race([
       (async () => {
-        const response = await fetcher(id ? `${RESPONSES_URL}/${id}` : RESPONSES_URL, {
+        const response = await fetcher(id ? `${endpoint}/${id}` : endpoint, {
           method, redirect: 'manual', signal: controller.signal,
-          headers: { 'content-type': 'application/json', authorization: `Bearer ${config.apiKey}` },
+          headers: { 'content-type': 'application/json', authorization: `Bearer ${config.apiKey}`,
+            ...(config.useAiGateway ? { 'cf-aig-authorization': `Bearer ${config.aiGatewayToken}`,
+              'cf-aig-collect-log': 'false', 'cf-aig-collect-log-payload': 'false',
+              'cf-aig-skip-cache': 'true', 'cf-aig-max-attempts': '1' } : {}),
+          },
           ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         })
         if (response.status >= 300 && response.status < 400) { void response.body?.cancel().catch(() => {}); throw new OpenAIError('request') }
@@ -91,13 +97,13 @@ async function request(method: 'GET' | 'POST', config: Config, fetcher: typeof f
     ])
   } catch (error) {
     if (error instanceof OpenAIError) throw error
-    throw new OpenAIError('network', safeDiagnostic(error, config.apiKey, config.webhookSecret ?? ''))
+    throw new OpenAIError('network', safeDiagnostic(error, config.apiKey, config.webhookSecret ?? '', config.aiGatewayToken ?? ''))
   } finally { if (timer !== undefined) clearTimeout(timer) }
 }
 export function responseBody(question: string, config: Config, history: ChatMessage[], forceSearch = false, background = false) {
   if (!isModelId(config.model)) throw new OpenAIError('model')
   if (forceSearch && !config.enableWebSearch) throw new OpenAIError('search')
-  const clean = (text: string) => hideKey(text, config.apiKey, config.webhookSecret ?? '')
+  const clean = (text: string) => hideKey(text, config.apiKey, config.webhookSecret ?? '', config.aiGatewayToken ?? '')
   return {
     model: config.model, background, store: background,
     input: [...history.slice(-12).map(m => ({ role: m.role === 'model' ? 'assistant' : 'user', content: clean(m.parts[0].text) })), { role: 'user', content: clean(question) }],
@@ -135,9 +141,9 @@ export function interactionAnswer(result: Record<string, unknown>, config: Confi
       const citations = (Array.isArray(part.annotations) ? part.annotations.map(object) : []).filter(a => a.type === 'url_citation')
       const replacements: { start: number; end: number; label: string }[] = []
       for (const citation of citations) {
-        const url = sourceUrl(citation.url, [config.apiKey, config.webhookSecret ?? ''])
+        const url = sourceUrl(citation.url, [config.apiKey, config.webhookSecret ?? '', config.aiGatewayToken ?? ''])
         if (!url || url.length > 2048) continue
-        const title = hideKey(typeof citation.title === 'string' ? citation.title : new URL(url).hostname, config.apiKey, config.webhookSecret ?? '')
+        const title = hideKey(typeof citation.title === 'string' ? citation.title : new URL(url).hostname, config.apiKey, config.webhookSecret ?? '', config.aiGatewayToken ?? '')
           .replace(/[\u0000-\u001f\u007f-\u009f]/gu, ' ').trim()
         if (!seen.has(url)) { sources.push({ title, url }); seen.add(url) }
         const start = citation.start_index; const end = citation.end_index
@@ -155,7 +161,7 @@ export function interactionAnswer(result: Record<string, unknown>, config: Confi
       return text.replace(/[^]*/gu, '')
     })
   })
-  let text = hideKey(texts.join('\n'), config.apiKey, config.webhookSecret ?? '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu, '').trim()
+  let text = hideKey(texts.join('\n'), config.apiKey, config.webhookSecret ?? '', config.aiGatewayToken ?? '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu, '').trim()
   if (!text) throw new OpenAIError('response')
   const missing = sources.filter(s => !text.includes(s.url)).slice(0, 2)
   if (missing.length) text += '\n来源：\n' + missing.map(s => `${Array.from(s.title).slice(0, 24).join('')} ${s.url}`).join('\n')

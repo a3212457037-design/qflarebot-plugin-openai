@@ -108,6 +108,27 @@
         "default": "",
         "description": "仅填写 OpenAI 官方 API Key，保存后不回显。独立于 Gemini；不要把密钥发到 QQ 或聊天中。"
       },
+      "useAiGateway": {
+        "type": "boolean",
+        "title": "使用 Cloudflare AI Gateway",
+        "default": false,
+        "description": "可选官方网关传输，关闭时直连 OpenAI。不能保证解决地区限制；不启用统一计费，不自动回退或重试。"
+      },
+      "aiGatewayUrl": {
+        "type": "string",
+        "title": "AI Gateway OpenAI 基础地址",
+        "default": "",
+        "maxLength": 256,
+        "description": "只接受自有 Cloudflare 网关：https://gateway.ai.cloudflare.com/v1/账户ID/网关ID/openai，不含 /responses。API Key 会随请求发送给此网关。"
+      },
+      "aiGatewayToken": {
+        "type": "string",
+        "title": "AI Gateway Run Token",
+        "writeOnly": true,
+        "default": "",
+        "maxLength": 4096,
+        "description": "填写仅有当前账户 AI Gateway Run 权限的 Cloudflare API Token，区别于 OpenAI Key。保存后不回显。"
+      },
       "model": {
         "type": "string",
         "title": "默认聊天模型",
@@ -225,7 +246,10 @@
       "/"
     ],
     "backgroundDelivery": "cron",
-    "webhookSecret": ""
+    "webhookSecret": "",
+    "useAiGateway": false,
+    "aiGatewayUrl": "",
+    "aiGatewayToken": ""
   },
   "ui": {
     "path": "/ui/",

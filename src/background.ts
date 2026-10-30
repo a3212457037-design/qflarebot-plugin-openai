@@ -73,7 +73,7 @@ export async function abandonBackground(ctx: Ctx, id: string): Promise<void> {
 }
 
 export async function submitBackground(ctx: Ctx, task: Task, config: Config, fetcher: typeof fetch, question: string, history: ChatMessage[], forceSearch = false): Promise<void> {
-  const clean = (text: string) => hideKey(text, config.apiKey, config.webhookSecret ?? '')
+  const clean = (text: string) => hideKey(text, config.apiKey, config.webhookSecret ?? '', config.aiGatewayToken ?? '')
   const payload: Payload = { question: clean(question), history: history.map(m => ({ role: m.role, parts: [{ text: clean(m.parts[0].text) }] })), forceSearch }
   await ctx.kv.put(`async:payload:${task.id}`, payload, { ttl: HISTORY_TTL_SECONDS })
   const claimed = await ctx.db.run("UPDATE {async_tasks} SET state='submitting',updated=? WHERE id=? AND state='preparing'", Date.now(), task.id)
@@ -132,7 +132,7 @@ async function saveCursor(ctx: Ctx, task: Task, text: string) {
 async function deliverTask(ctx: Ctx, task: Task, config: Config, maxSends: number): Promise<void> {
   const raw = await ctx.kv.get(`async:answer:${task.id}`)
   if (!raw) throw new BackgroundError('answer')
-  const text = hideKey(raw, config.apiKey, config.webhookSecret ?? '')
+  const text = hideKey(raw, config.apiKey, config.webhookSecret ?? '', config.aiGatewayToken ?? '')
   const slots = task.scene === 'c2c' ? 4 : 5
   let bytes = QQ_PART_BYTES
   const keys = pendingKeys({ botId: task.bot, userId: task.user, scene: task.scene, targetId: task.target } as Session)!
